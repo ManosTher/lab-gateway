@@ -79,22 +79,14 @@ else
     echo "dl-fedora already installed"
 fi
 
-ISO_PATH="/var/lib/libvirt/images/Fedora-Server-netinst-x86_64-42-1.1.iso"
+ISO_PATH="/var/lib/libvirt/images/Fedora-Server-dvd-x86_64-42-1.1.iso"
 DOWNLOAD_DIR="/var/lib/libvirt/images"
 
 if [ ! -f "$ISO_PATH" ]; then
     echo "Downloading Fedora 42 Server ISO (~921MB)..."
-    echo "Using dl-fedora tool..."
-    
-    # dl-fedora download to specific location
-    sudo dl-fedora 42 server --dir "$DOWNLOAD_DIR"
-    
+   sudo wget -O "$ISO_PATH" https://ftp.cc.uoc.gr/mirrors/linux/fedora/linux/releases/42/Server/x86_64/iso/Fedora-Server-dvd-x86_64-42-1.1.iso
+
     if [ $? -eq 0 ]; then
-        # dl-fedora downloading with different name,Find it
-        DOWNLOADED_FILE=$(sudo ls -t "$DOWNLOAD_DIR"/Fedora-Server-netinst-*.iso 2>/dev/null | head -1)
-        if [ -n "$DOWNLOADED_FILE" ] && [ "$DOWNLOADED_FILE" != "$ISO_PATH" ]; then
-            sudo mv "$DOWNLOADED_FILE" "$ISO_PATH"
-        fi
 	echo "ISO downloaded successfully"
     else
         echo "Failed to download ISO"
@@ -103,6 +95,59 @@ if [ ! -f "$ISO_PATH" ]; then
 else
     echo "ISO already exists: $ISO_PATH"
 fi
+
+#=========================================================
+echo -e "\n=== 2.5/6: Creating Kickstart (INSTALLATION ONLY - NO POST-CONFIG) ==="
+cat > /tmp/ks.cfg << 'KS'
+# Fedora 42 Server - BASIC INSTALLATION ONLY (No post-config)
+text
+reboot --eject
+
+# System language
+lang en_US.UTF-8
+keyboard us
+timezone Europe/Athens --utc
+
+# Root password
+rootpw --plaintext labg123
+
+# User creation
+user --name=admin --password=lab123 --groups=wheel
+
+# Disk partitioning
+zerombr
+clearpart --all --initlabel
+autopart --type=plain
+
+# Network configuration (basic)
+network --bootproto=dhcp --device=enp1s0 --activate --hostname=gateway.lab.local
+network --bootproto=static --ip=10.10.10.1 --netmask=255.255.255.0 --gateway=10.10.10.1 --device=enp2s0 --activate
+
+# Installation source
+cdrom
+
+# Skip GUI
+skipx
+firstboot --disable
+
+
+# Basic services only
+services --enabled=sshd,firewalld
+
+# Packages
+%packages
+@^server-product-environment
+vim
+wget
+curl
+firewalld
+dnsmasq
+cockpit
+openssl
+%end
+
+KS
+echo "✅ Kickstart created (installation only)"
 
 #=========================================================
 
@@ -126,16 +171,18 @@ fi
 echo -e "\n=== 4/6: Creating Gateway VM with 2 NICs ==="
 sudo virt-install \
 	--name gateway \
-	--ram 1024 \
-	--vcpus 1 \
+	--ram 2024 \
+	--vcpus 2 \
 	--disk path=/var/lib/libvirt/images/gateway.qcow2,size=10 \
-	--os-variant fedora42 \
+	--os-variant fedora-rawhide \
 	--network network=external,model=virtio \
 	--network network=internal,model=virtio \
-	--graphics vnc \
+	--graphics none \
 	--console pty,target_type=serial \
-	--cdrom "$ISO_PATH" \
-	--wait 0
+	--location "$ISO_PATH" \
+	--initrd-inject /tmp/ks.cfg \
+	--extra-args "inst.ks=file:/ks.cfg console=ttyS0 inst.reboot" \
+	--check all=off
 
 if [ $? -eq 0 ]; then
 	echo "✅ Gateway VM created successfully"
