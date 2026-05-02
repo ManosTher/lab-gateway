@@ -146,6 +146,26 @@ cockpit
 openssl
 %end
 
+# ======== Post Configuration =========
+#%post --log=/root/post-install.log
+# "=== STARTING ==="
+
+#ip addr add 10.10.10.1/24 dev enp2s0
+#ip link set enp2s0 up
+
+#echo "net.ipv4.ip_forward=1" >> /etc/sysctl.conf
+#sysctl -p
+
+#NAT
+#firewall-cmd --permanent --add-masquerade
+#firewall-cmd --permanent --zone=public --add-masquerade
+#firewall-cmd --reload
+
+#DNSMASQ (DHCP+DNS interval VMS)
+
+
+#%end
+
 KS
 echo "✅ Kickstart created (installation only)"
 

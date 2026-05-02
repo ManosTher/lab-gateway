@@ -16,14 +16,14 @@ fi
 echo -e "\n=== 2/6: Check if networks already exist ==="
 if virsh net-list --all | grep -q "external"; then
         echo "Network 'external' exist. Deleting..."
-      sudo virsh net-destroy external 2/dev/null
-      sudo virsh net-undefine external
+       	sudo virsh net-destroy external 2>/dev/null
+       	sudo virsh net-undefine external
 fi
 
 
 if virsh net-list --all | grep -q "internal"; then
         echo "Network 'internal' exist. Deleting..."
-      sudo virsh net-destroy internal 2/dev/null
+      sudo virsh net-destroy internal 2>/dev/null
       sudo virsh net-undefine internal
 fi
 
@@ -78,9 +78,10 @@ sudo virsh net-start internal
 sudo virsh net-autostart internal
 echo " ** Internal network : Started ** "
 
+
 echo -e "\n===  6/6: Verification ==="
 echo "networks list:"
-virsh net-list --all
+sudo virsh net-list --all
 
 echo -e "\nexternal network details:"
 virsh net-dumpxml external | grep -E "name|bridge|ip address"
