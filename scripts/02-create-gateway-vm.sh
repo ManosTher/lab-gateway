@@ -150,12 +150,22 @@ openssl
 %post --log=/root/post-install.log
 
 echo "net.ipv4.ip_forward=1" >> /etc/sysctl.conf
+sysctl -p
 
+# 2. Kill Firewalld & Nftables (Conflict Prevention)
+systemctl stop firewalld
 systemctl disable firewalld
+systemctl stop nftables
+systemctl disable nftables
+systemctl mask nftables
 
-dnf install -y dnsmasq
-dnf install -y iptables-services
+# 3. Services Install
+dnf install -y dnsmasq iptables-services
 
+echo "admin ALL=(ALL) NOPASSWD:ALL" > /etc/sudoers.d/admin
+chmod 0440 /etc/sudoers.d/admin
+
+# 4. DNSMasq Config (DHCP & DNS)
 cat > /etc/dnsmasq.conf << EOF
 interface=enp2s0
 bind-interfaces
@@ -164,15 +174,41 @@ dhcp-option=option:router,10.10.10.2
 dhcp-option=option:dns-server,8.8.8.8
 EOF
 
+# 5. Iptables Rules (NAT)
+iptables -F
+iptables -t nat -F
+
+# Auto-login
+mkdir -p /etc/systemd/system/serial-getty@ttyS0.service.d/
+cat << 'EOF' > /etc/systemd/system/serial-getty@ttyS0.service.d/autologin.conf
+[Service]
+ExecStart=
+ExecStart=-/sbin/agetty --autologin admin --keep-baud 115200,57600,38400,9600 %I $TERM
+EOF
+
+cat << 'EOF' > /usr/local/bin/gateway-setup.sh
+#!/bin/bash
+if [ ! -f /home/admin/.setup_done ]; then
+    echo "⚙️  Configuring NAT and Routing for the first time..."
+    sudo iptables -t nat -A POSTROUTING -o enp1s0 -j MASQUERADE
+    sudo iptables -A FORWARD -i enp2s0 -o enp1s0 -j ACCEPT
+    sudo iptables -A FORWARD -m state --state RELATED,ESTABLISHED -j ACCEPT
+    
+    sudo mkdir -p /etc/sysconfig
+    sudo iptables-save | sudo tee /etc/sysconfig/iptables
+    sudo systemctl enable --now iptables
+    
+    touch /home/admin/.setup_done
+    echo "✅ Setup Complete! Internet is now available to clients."
+fi
+EOF
+
+chmod +x /usr/local/bin/gateway-setup.sh
+chown admin:admin /usr/local/bin/gateway-setup.sh
+echo "/usr/local/bin/gateway-setup.sh" >> /home/admin/.bashrc
+
+# 7. Enable Services
 systemctl enable --now dnsmasq
-
-# 3. Εφαρμογή των κανόνων Routing/NAT
-iptables -t nat -A POSTROUTING -o enp1s0 -j MASQUERADE
-iptables -A FORWARD -i enp2s0 -o enp1s0 -j ACCEPT
-iptables -A FORWARD -m state --state RELATED,ESTABLISHED -j ACCEPT
-
-iptables-save > /etc/sysconfig/iptables
-systemctl enable iptables
 
 
 %end
