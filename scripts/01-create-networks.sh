@@ -55,9 +55,6 @@ cat > /tmp/internal-network.xml <<'EOF'
 	<name>internal</name>
 	<bridge name='virbr-internal' stp='on' delay='0'/>
 	<ip address='10.10.10.1' netmask='255.255.255.0'>
-		<dhcp>
-			<range start='10.10.10.100' end='10.10.10.200'/>
-		</dhcp>
 	</ip>
 </network>
 EOF

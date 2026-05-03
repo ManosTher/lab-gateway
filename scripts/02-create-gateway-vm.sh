@@ -120,8 +120,8 @@ clearpart --all --initlabel
 autopart --type=plain
 
 # Network configuration (basic)
-network --bootproto=dhcp --device=enp1s0 --activate --hostname=gateway.lab.local
-network --bootproto=static --ip=10.10.10.1 --netmask=255.255.255.0 --gateway=10.10.10.1 --device=enp2s0 --activate
+network --bootproto=static --device=enp1s0 --ip=192.168.200.102 --netmask=255.255.255.0 --gateway=192.168.200.1 --nameserver=8.8.8.8 --activate --hostname=gateway.lab.local
+network --bootproto=static --ip=10.10.10.2 --netmask=255.255.255.0 --device=enp2s0 --activate
 
 # Installation source
 cdrom
@@ -147,24 +147,30 @@ openssl
 %end
 
 # ======== Post Configuration =========
-#%post --log=/root/post-install.log
-# "=== STARTING ==="
+%post --log=/root/post-install.log
 
-#ip addr add 10.10.10.1/24 dev enp2s0
-#ip link set enp2s0 up
+echo "net.ipv4.ip_forward=1" >> /etc/sysctl.conf
 
-#echo "net.ipv4.ip_forward=1" >> /etc/sysctl.conf
-#sysctl -p
+systemctl disable firewalld
 
-#NAT
-#firewall-cmd --permanent --add-masquerade
-#firewall-cmd --permanent --zone=public --add-masquerade
-#firewall-cmd --reload
+dnf install -y dnsmasq
+dnf install -y iptables-services
 
-#DNSMASQ (DHCP+DNS interval VMS)
+cat > /etc/dnsmasq.conf << EOF
+interface=enp2s0
+bind-interfaces
+dhcp-range=10.10.10.50,10.10.10.200,24h
+dhcp-option=option:router,10.10.10.2
+dhcp-option=option:dns-server,8.8.8.8
+EOF
 
+systemctl enable --now dnsmasq
 
-#%end
+systemctl enable iptables
+iptables -t nat -A POSTROUTING -o enp1s0 -j MASQUERADE
+iptables-save > /etc/sysconfig/iptables
+
+%end
 
 KS
 echo "✅ Kickstart created (installation only)"
@@ -194,7 +200,7 @@ sudo virt-install \
 	--ram 2024 \
 	--vcpus 2 \
 	--disk path=/var/lib/libvirt/images/gateway.qcow2,size=10 \
-	--os-variant fedora-rawhide \
+	--os-variant fedora42 \
 	--network network=external,model=virtio \
 	--network network=internal,model=virtio \
 	--graphics none \

@@ -25,12 +25,14 @@ fi
 # ========== KICKSTART FOR CLIENT ==========
 cat > /tmp/client-ks.cfg << 'KS'
 # Fedora 42 Client - FULLY AUTOMATIC INSTALLATION
+text
+reboot --eject
 lang en_US.UTF-8
 keyboard us
 timezone Europe/Athens --utc
 
 # Network (DHCP from gateway)
-network --bootproto=dhcp --device=link --activate --hostname=client.lab.local
+network --bootproto=dhcp --device=enp1s0 --activate
 
 # Root password
 rootpw --plaintext ubu123
@@ -49,7 +51,7 @@ cdrom
 # No GUI
 skipx
 firstboot --disable
-text
+
 
 # Basic packages
 %packages
@@ -92,7 +94,7 @@ create_vm() {
     sudo virt-install \
         --name $VM_NAME \
         --ram 2048 \
-        --vcpus 1 \
+        --vcpus 2 \
         --disk size=10 \
         --os-variant fedora42 \
         --network network=internal,model=virtio \
@@ -100,9 +102,9 @@ create_vm() {
         --console pty,target_type=serial \
         --location "$ISO_PATH" \
         --initrd-inject /tmp/ks-$VM_NAME.cfg \
-	--extra-args "inst.ks=file:/ks-$VM_NAME.cfg console=ttyS0 inst.text" \
-	--check all=off \
-	--wait 0 \
+	    --extra-args "inst.ks=file:/ks-$VM_NAME.cfg console=ttyS0 inst.text" \
+	    --check all=off \
+	    --wait 0 \
 	
 }	
 
@@ -110,7 +112,7 @@ echo "=== OPENING VM CONSOLES ==="
 
 # ========== START BOTH IN BACKGROUND ==========
 create_vm fedora-client1 &
-create_vm fedora-client2 &
+#create_vm fedora-client2 &
 
 echo "Waiting for VMs to be created..."
 sleep 5
