@@ -152,18 +152,25 @@ openssl
 echo "net.ipv4.ip_forward=1" >> /etc/sysctl.conf
 sysctl -p
 
-# 2. Kill Firewalld & Nftables (Conflict Prevention)
-systemctl stop firewalld
-systemctl disable firewalld
-systemctl stop nftables
-systemctl disable nftables
-systemctl mask nftables
-
-# 3. Services Install
-dnf install -y dnsmasq iptables-services
-
 echo "admin ALL=(ALL) NOPASSWD:ALL" > /etc/sudoers.d/admin
 chmod 0440 /etc/sudoers.d/admin
+
+# 2. Kill Firewalld & Nftables (Conflict Prevention)
+systemctl start firewalld
+systemctl enable firewalld
+
+
+# 3. Services Install
+dnf install -y dnsmasq
+systemctl enable dnsmasq
+
+# Auto-login
+mkdir -p /etc/systemd/system/serial-getty@ttyS0.service.d/
+cat << 'EOF' > /etc/systemd/system/serial-getty@ttyS0.service.d/autologin.conf
+[Service]
+ExecStart=
+ExecStart=-/sbin/agetty --autologin admin --keep-baud 115200,57600,38400,9600 %I $TERM
+EOF
 
 # 4. DNSMasq Config (DHCP & DNS)
 cat > /etc/dnsmasq.conf << EOF
@@ -174,11 +181,7 @@ dhcp-option=option:router,10.10.10.2
 dhcp-option=option:dns-server,8.8.8.8
 EOF
 
-# 5. Iptables Rules (NAT)
-iptables -F
-iptables -t nat -F
-
-# Auto-login
+# 5. Auto-login
 mkdir -p /etc/systemd/system/serial-getty@ttyS0.service.d/
 cat << 'EOF' > /etc/systemd/system/serial-getty@ttyS0.service.d/autologin.conf
 [Service]
@@ -186,20 +189,38 @@ ExecStart=
 ExecStart=-/sbin/agetty --autologin admin --keep-baud 115200,57600,38400,9600 %I $TERM
 EOF
 
+# 6. Gateway Setup Script (Firewalld Logic)
 cat << 'EOF' > /usr/local/bin/gateway-setup.sh
 #!/bin/bash
 if [ ! -f /home/admin/.setup_done ]; then
-    echo "⚙️  Configuring NAT and Routing for the first time..."
-    sudo iptables -t nat -A POSTROUTING -o enp1s0 -j MASQUERADE
-    sudo iptables -A FORWARD -i enp2s0 -o enp1s0 -j ACCEPT
-    sudo iptables -A FORWARD -m state --state RELATED,ESTABLISHED -j ACCEPT
-    
-    sudo mkdir -p /etc/sysconfig
-    sudo iptables-save | sudo tee /etc/sysconfig/iptables
-    sudo systemctl enable --now iptables
+    # 1. interface belonging
+    sudo firewall-cmd --permanent --zone=external --add-interface=enp1s0
+    sudo firewall-cmd --permanent --zone=internal --add-interface=enp2s0
+
+    # 2. Masquerade (NAT) external
+    sudo firewall-cmd --permanent --zone=external --add-masquerade
+
+    # 3. Επιτρέπουμε DNS και DHCP internally
+    sudo firewall-cmd --permanent --zone=internal --add-service=dns
+    sudo firewall-cmd --permanent --zone=internal --add-service=dhcp
+    sudo firewall-cmd --permanent --zone=internal --add-service=cockpit
+    sudo firewall-cmd --permanent --zone=internal --add-service=ssh
+
+    # 4. Cockpit (HTTPS) και SSH for managment
+    sudo firewall-cmd --permanent --zone=internal --add-service=cockpit
+    sudo firewall-cmd --permanent --zone=internal --add-service=ssh
+
+    # 5. Διασφάλιση Forwarding (Policy)
+    # Στις νέες εκδόσεις Fedora, το firewalld χρειάζεται ρητή άδεια για forwarding μεταξύ zones
+    sudo firewall-cmd --permanent --new-policy=int-to-ext
+    sudo firewall-cmd --permanent --policy=int-to-ext --add-ingress-zone=internal
+    sudo firewall-cmd --permanent --policy=int-to-ext --add-egress-zone=external
+    sudo firewall-cmd --permanent --policy=int-to-ext --set-target=ACCEPT
+
+    # 6. Εφαρμογή των αλλαγών
+    sudo firewall-cmd --reload
     
     touch /home/admin/.setup_done
-    echo "✅ Setup Complete! Internet is now available to clients."
 fi
 EOF
 
