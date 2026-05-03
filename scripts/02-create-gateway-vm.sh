@@ -52,7 +52,7 @@ for dep in "${DEPENDENCIES[@]}"; do
 done
 
 # ================================
-echo "=== 1/6 Checking prerequisites ==="
+# === 1/6 Checking prerequisites ===
 
 # Checking for Networks
 if ! virsh net-list --all | grep -q "external"; then
@@ -68,22 +68,14 @@ fi
 echo "Networks exist"
 
 #====================================================
+# === 2/6: Download Fedora Iso ===
 
 echo -e "\n=== 2/6: Checking-Download Fedora Iso ==="
 
-sudo dnf -y install dl-fedora
-if [ $? -ne 0 ]; then
-        echo " Failed to install dl-fedora"
-        exit 1
-else
-    echo "dl-fedora already installed"
-fi
-
 ISO_PATH="/var/lib/libvirt/images/Fedora-Server-dvd-x86_64-42-1.1.iso"
-DOWNLOAD_DIR="/var/lib/libvirt/images"
 
 if [ ! -f "$ISO_PATH" ]; then
-    echo "Downloading Fedora 42 Server ISO (~921MB)..."
+    echo "Downloading Fedora 42 Server ISO..."
    sudo wget -O "$ISO_PATH" https://ftp.cc.uoc.gr/mirrors/linux/fedora/linux/releases/42/Server/x86_64/iso/Fedora-Server-dvd-x86_64-42-1.1.iso
 
     if [ $? -eq 0 ]; then
@@ -97,7 +89,7 @@ else
 fi
 
 #=========================================================
-echo -e "\n=== 2.5/6: Creating Kickstart (INSTALLATION ONLY - NO POST-CONFIG) ==="
+# === 2.5/6: Creating Kickstart ===
 cat > /tmp/ks.cfg << 'KS'
 # Fedora 42 Server - BASIC INSTALLATION ONLY (No post-config)
 text
@@ -152,6 +144,7 @@ openssl
 echo "net.ipv4.ip_forward=1" >> /etc/sysctl.conf
 sysctl -p
 
+# 1. Sudoers
 echo "admin ALL=(ALL) NOPASSWD:ALL" > /etc/sudoers.d/admin
 chmod 0440 /etc/sudoers.d/admin
 
@@ -164,7 +157,7 @@ systemctl enable firewalld
 dnf install -y dnsmasq
 systemctl enable dnsmasq
 
-# Auto-login
+# 4. Auto-login
 mkdir -p /etc/systemd/system/serial-getty@ttyS0.service.d/
 cat << 'EOF' > /etc/systemd/system/serial-getty@ttyS0.service.d/autologin.conf
 [Service]
@@ -172,21 +165,13 @@ ExecStart=
 ExecStart=-/sbin/agetty --autologin admin --keep-baud 115200,57600,38400,9600 %I $TERM
 EOF
 
-# 4. DNSMasq Config (DHCP & DNS)
+# 5. DNSMasq Config (DHCP & DNS)
 cat > /etc/dnsmasq.conf << EOF
 interface=enp2s0
 bind-interfaces
 dhcp-range=10.10.10.50,10.10.10.200,24h
 dhcp-option=option:router,10.10.10.2
 dhcp-option=option:dns-server,8.8.8.8
-EOF
-
-# 5. Auto-login
-mkdir -p /etc/systemd/system/serial-getty@ttyS0.service.d/
-cat << 'EOF' > /etc/systemd/system/serial-getty@ttyS0.service.d/autologin.conf
-[Service]
-ExecStart=
-ExecStart=-/sbin/agetty --autologin admin --keep-baud 115200,57600,38400,9600 %I $TERM
 EOF
 
 # 6. Gateway Setup Script (Firewalld Logic)
@@ -200,26 +185,34 @@ if [ ! -f /home/admin/.setup_done ]; then
     # 2. Masquerade (NAT) external
     sudo firewall-cmd --permanent --zone=external --add-masquerade
 
-    # 3. Επιτρέπουμε DNS και DHCP internally
-    sudo firewall-cmd --permanent --zone=internal --add-service=dns
-    sudo firewall-cmd --permanent --zone=internal --add-service=dhcp
-    sudo firewall-cmd --permanent --zone=internal --add-service=cockpit
-    sudo firewall-cmd --permanent --zone=internal --add-service=ssh
+    # 3. Allowed Services (Added HTTPS)
+    for svc in dns dhcp cockpit ssh https; do
+        sudo firewall-cmd --permanent --zone=internal --add-service=$svc
+    done
 
-    # 4. Cockpit (HTTPS) και SSH for managment
-    sudo firewall-cmd --permanent --zone=internal --add-service=cockpit
-    sudo firewall-cmd --permanent --zone=internal --add-service=ssh
-
-    # 5. Διασφάλιση Forwarding (Policy)
-    # Στις νέες εκδόσεις Fedora, το firewalld χρειάζεται ρητή άδεια για forwarding μεταξύ zones
+    # 4. Διασφάλιση Forwarding (Policy)
     sudo firewall-cmd --permanent --new-policy=int-to-ext
     sudo firewall-cmd --permanent --policy=int-to-ext --add-ingress-zone=internal
     sudo firewall-cmd --permanent --policy=int-to-ext --add-egress-zone=external
     sudo firewall-cmd --permanent --policy=int-to-ext --set-target=ACCEPT
 
-    # 6. Εφαρμογή των αλλαγών
-    sudo firewall-cmd --reload
+    # 5. SSL Certificate Generation (HTTPS)
+    sudo mkdir -p /etc/pki/tls/private /etc/pki/tls/certs
+    sudo openssl req -x509 -nodes -days 3650 -newkey rsa:2048 \
+        -keyout /etc/pki/tls/private/gateway.key \
+        -out /etc/pki/tls/certs/gateway.crt \
+        -subj "/C=GR/L=Thessaloniki/O=Lab/CN=gateway.lab.local"
     
+    # Link certificate for Cockpit
+    sudo cp /etc/pki/tls/certs/gateway.crt /etc/cockpit/ws-certs.d/01-lab.cert
+    sudo systemctl restart cockpit.socket
+
+    # 6. Apply changes
+    sudo firewall-cmd --reload
+
+    # 7. DHCP Server (dnsmasq)
+    sudo systemctl enable --now dnsmasq
+
     touch /home/admin/.setup_done
 fi
 EOF
@@ -239,7 +232,7 @@ echo "✅ Kickstart created (installation only)"
 
 #=========================================================
 
-echo -e "\n=== 3/6 Removing old Gateway VM (if exists) ==="
+# === 3/6 Removing old VM ===if sudo virsh list --all | grep -q "gateway"; then
 if sudo virsh list --all | grep -q "gateway"; then
     echo "Removing existing gateway VM..."
     sudo virsh destroy gateway 2>/dev/null
@@ -280,26 +273,6 @@ else
 fi
 
 #=============================================
-
-echo -e "\n=== 5/6: VM Configuration ==="
-echo "Gateway VM has:"
-echo "  - NIC1: external network (192.168.200.0/24) - for internet access"
-echo "  - NIC2: internal network (10.10.10.0/24) - for lab clients"
-
-#============================================
-
-echo -e "\n=== 6/6: Next Steps ==="
-echo "1. Install Fedora Server on the VM (manual or with kickstart)"
-echo "2. After installation, get the VM's IP:"
-echo "   sudo virsh domifaddr gateway"
-echo "3. SSH into the VM: ssh admin@<IP>"
-echo "4. Run the configuration script: 03-configure-gateway.sh"
-
-echo -e "\nGateway VM creation complete!"
-echo ""
-echo "To view the VM:"
-echo "  virsh list --all"
-echo "  virt-viewer gateway"
 
 #=== END
 

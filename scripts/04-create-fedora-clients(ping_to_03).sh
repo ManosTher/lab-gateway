@@ -75,12 +75,47 @@ ExecStart=
 ExecStart=-/sbin/agetty --autologin admin --keep-baud 115200,57600,38400,9600 %I $TERM
 EOF
 
-# 1. ping
-cat << 'EOF' > /usr/local/bin/auto-ping.sh
+# Dynamic ping using nmap
+cat << 'AUTOPING' > /usr/local/bin/auto-ping.sh
 #!/bin/bash
-echo "=== Starting Automated Lab Connectivity Test ==="
-ping 8.8.8.8
-EOF
+
+INTERFACE="enp1s0"
+sleep 5
+MY_IP=$(ip -4 addr show $INTERFACE | grep -oP '(?<=inet\s)\d+(\.\d+){3}')
+GATEWAY="10.10.10.2"
+SUBNET_PREFIX="10.10.10"
+
+echo "=== Ultra Fast Lab Discovery Started ==="
+
+while true; do
+    echo "Scanning full subnet range .3 to .254 in parallel..."
+    
+    # Clean found
+    rm -f /tmp/found_ip
+    
+    # Scan all range
+    for i in {3..254}; do
+        TEST_IP="${SUBNET_PREFIX}.$i"
+        if [ "$TEST_IP" == "$MY_IP" ]; then continue; fi
+        
+        # IP writen in file
+        (ping -c 1 -W 1 "$TEST_IP" > /dev/null 2>&1 && echo "$TEST_IP" > /tmp/found_ip) &
+    done
+
+    # Waiting everybody answer
+    sleep 1.5
+    
+    if [ -f /tmp/found_ip ]; then
+        TARGET_IP=$(head -n 1 /tmp/found_ip)
+        echo ">>> SUCCESS! Found neighbor at: $TARGET_IP"
+        # Ξεκινάμε το ατελείωτο ping
+        ping "$TARGET_IP"
+    else
+        echo "No neighbors found in range .3-.254. Retrying..."
+    fi
+    sleep 2
+done
+AUTOPING
 chmod 755 /usr/local/bin/auto-ping.sh
 
 # Add to bashrc
@@ -93,7 +128,7 @@ KS
 
 # ========== CREATE VM FUNCTION (background, no wait) ==========
 
-VM_NAME="fedora-client1"
+VM_NAME="fedora-client2"
 
 echo "=== Cleaning up old VM: $VM_NAME ==="
 if sudo virsh list --all | grep -q "$VM_NAME"; then
@@ -103,7 +138,7 @@ if sudo virsh list --all | grep -q "$VM_NAME"; then
 fi
 
 cp /tmp/client-ks.cfg /tmp/ks-$VM_NAME.cfg
-sed -i "s/client.lab.local/client1.lab.local/g" /tmp/ks-$VM_NAME.cfg
+sed -i "s/client.lab.local/client2.lab.local/g" /tmp/ks-$VM_NAME.cfg
 
 echo "Creating $VM_NAME..."
 
@@ -120,7 +155,7 @@ sudo virt-install \
     --name $VM_NAME \
     --ram 2048 \
     --vcpus 2 \
-	--disk path=/var/lib/libvirt/images/client1.qcow2,size=10 \
+	--disk path=/var/lib/libvirt/images/client2.qcow2,size=10 \
     --os-variant fedora42 \
     --network network=internal,model=virtio \
     --graphics none \
