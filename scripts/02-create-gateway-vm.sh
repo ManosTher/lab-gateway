@@ -166,9 +166,14 @@ EOF
 
 systemctl enable --now dnsmasq
 
-systemctl enable iptables
+# 3. Εφαρμογή των κανόνων Routing/NAT
 iptables -t nat -A POSTROUTING -o enp1s0 -j MASQUERADE
+iptables -A FORWARD -i enp2s0 -o enp1s0 -j ACCEPT
+iptables -A FORWARD -m state --state RELATED,ESTABLISHED -j ACCEPT
+
 iptables-save > /etc/sysconfig/iptables
+systemctl enable iptables
+
 
 %end
 

@@ -26,7 +26,7 @@ fi
 cat > /tmp/client-ks.cfg << 'KS'
 # Fedora 42 Client - FULLY AUTOMATIC INSTALLATION
 text
-reboot --eject
+reboot
 lang en_US.UTF-8
 keyboard us
 timezone Europe/Athens --utc
@@ -62,9 +62,59 @@ wget
 %end
 
 # Post-install (test script)
+# Post-install (test script)
 %post
 echo "Client installed successfully" > /root/status.txt
 hostnamectl set-hostname client.lab.local
+
+# Auto-login
+mkdir -p /etc/systemd/system/serial-getty@ttyS0.service.d/
+cat << 'EOF' > /etc/systemd/system/serial-getty@ttyS0.service.d/autologin.conf
+[Service]
+ExecStart=
+ExecStart=-/sbin/agetty --autologin admin --keep-baud 115200,57600,38400,9600 %I $TERM
+EOF
+
+# 1. ping
+#cat << 'EOF' > /usr/local/bin/auto-ping.sh
+#!/bin/bash
+#sleep 5
+#echo "=== Starting Automated Lab Connectivity Test ==="
+#ping 8.8.8.8
+#EOF
+
+#chmod +x /usr/local/bin/auto-ping.sh
+
+cat << 'EOF' > /usr/local/bin/auto-ping.sh
+#!/bin/bash
+echo "=== Starting Automated Lab Connectivity Test ==="
+ping 8.8.8.8
+EOF
+chmod 755 /usr/local/bin/auto-ping.sh
+
+# Add to bashrc
+echo "/usr/local/bin/auto-ping.sh" >> /home/admin/.bashrc
+chown admin:admin /home/admin/.bashrc
+
+# 2. Systemd Service ping
+#cat << 'EOF' > /etc/systemd/system/autoping.service
+#[Unit]
+#Description=Continuous Connectivity Check
+#After=network-online.target
+
+#[Service]
+#ExecStart=/usr/local/bin/auto-ping.sh
+# StandardOutput=inherit σημαίνει ότι θα γράφει εκεί που τρέχει το session
+#StandardOutput=journal+console
+#Restart=always
+
+[Install]
+WantedBy=multi-user.target
+EOF
+
+# enable service
+systemctl disable autoping.service 2>/dev/null
+
 %end
 KS
 
@@ -83,36 +133,40 @@ for VM in fedora-client1 fedora-client2; do
 done
 
 # ========== CREATE VM FUNCTION (background, no wait) ==========
-create_vm() {
-    local VM_NAME=$1
-    local HOSTNAME=$2
 
-    cp /tmp/client-ks.cfg /tmp/ks-$VM_NAME.cfg
-    sed -i "s/client.lab.local/$HOSTNAME/g" /tmp/ks-$VM_NAME.cfg
+VM_NAME="fedora-client1"
 
-    echo "Creating $VM_NAME..."
-    sudo virt-install \
-        --name $VM_NAME \
-        --ram 2048 \
-        --vcpus 2 \
-        --disk size=10 \
-        --os-variant fedora42 \
-        --network network=internal,model=virtio \
-        --graphics none \
-        --console pty,target_type=serial \
-        --location "$ISO_PATH" \
-        --initrd-inject /tmp/ks-$VM_NAME.cfg \
-	    --extra-args "inst.ks=file:/ks-$VM_NAME.cfg console=ttyS0 inst.text" \
-	    --check all=off \
-	    --wait 0 \
-	
-}	
+cp /tmp/client-ks.cfg /tmp/ks-$VM_NAME.cfg
+sed -i "s/client.lab.local/client1.lab.local/g" /tmp/ks-$VM_NAME.cfg
 
-echo "=== OPENING VM CONSOLES ==="
+echo "Creating $VM_NAME..."
 
-# ========== START BOTH IN BACKGROUND ==========
-create_vm fedora-client1 &
-#create_vm fedora-client2 &
+konsole --title "LAB CONSOLE: $VM_NAME" -e bash -c "
+    echo '--- Console Monitor for $VM_NAME Starting ---';
+    while true; do
+        sudo virsh console $VM_NAME
+        echo '--- VM Rebooting or Disconnected. Retrying in 2 seconds... ---'
+        sleep 2
+    done" &
+
+
+sudo virt-install \
+    --name $VM_NAME \
+    --ram 2048 \
+    --vcpus 2 \
+	--disk path=/var/lib/libvirt/images/client.qcow2,size=10 \
+    --os-variant fedora42 \
+    --network network=internal,model=virtio \
+    --graphics none \
+    --console pty,target_type=serial \
+    --location "$ISO_PATH" \
+    --initrd-inject /tmp/ks-$VM_NAME.cfg \
+	--extra-args "inst.ks=file:/ks-$VM_NAME.cfg console=ttyS0 inst.reboot" \
+    --autoconsole none \
+    --wait -1 \
+	--check all=off
+
+
 
 echo "Waiting for VMs to be created..."
 sleep 5
