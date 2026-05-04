@@ -136,6 +136,7 @@ if [ ! -f /home/admin/.setup_done ]; then
 
     # 2. Masquerade (NAT) external
     sudo firewall-cmd --permanent --zone=external --add-masquerade
+    sudo firewall-cmd --permanent --zone=external --add-service=ssh
 
     # 3. Allowed Services (Added HTTPS)
     for svc in dns dhcp cockpit ssh https; do
@@ -149,15 +150,24 @@ if [ ! -f /home/admin/.setup_done ]; then
     sudo firewall-cmd --permanent --policy=int-to-ext --set-target=ACCEPT
 
     # 5. SSL Certificate Generation (HTTPS)
+    sudo groupadd -r cockpit-ws || true
+    sudo useradd -r -g cockpit-ws -s /sbin/nologin -d /usr/share/cockpit/empty cockpit-ws || true
+   
     sudo mkdir -p /etc/pki/tls/private /etc/pki/tls/certs
-    sudo openssl req -x509 -nodes -days 3650 -newkey rsa:2048 \
-        -keyout /etc/pki/tls/private/gateway.key \
-        -out /etc/pki/tls/certs/gateway.crt \
-        -subj "/C=GR/L=Thessaloniki/O=Lab/CN=gateway.lab.local"
+    sudo mkdir -p /etc/cockpit/ws-certs.d
     
-    # Link certificate for Cockpit
-    sudo cp /etc/pki/tls/certs/gateway.crt /etc/cockpit/ws-certs.d/01-lab.cert
+    sudo openssl req -x509 -nodes -days 3650 -newkey rsa:2048 \
+        -keyout /etc/cockpit/ws-certs.d/01-setup.key \
+        -out /etc/cockpit/ws-certs.d/01-setup.cert \
+        -subj "/C=GR/L=Thessaloniki/O=Lab/CN=192.168.200.102"
+    
+    sudo chown root:cockpit-ws /etc/cockpit/ws-certs.d/01-setup.key
+    sudo chmod 640 /etc/cockpit/ws-certs.d/01-setup.key
+    sudo chmod 644 /etc/cockpit/ws-certs.d/01-setup.cert
+    
+    sudo systemctl daemon-reload
     sudo systemctl restart cockpit.socket
+    sudo systemctl enable --now cockpit.socket
 
     # 6. Apply changes
     sudo firewall-cmd --reload
@@ -184,7 +194,7 @@ echo "✅ Kickstart created (installation only)"
 
 #=========================================================
 
-# === 3/6 Removing old VM ===if sudo virsh list --all | grep -q "gateway"; then
+# === 3/6 Removing old VM ===
 if sudo virsh list --all | grep -q "gateway"; then
     echo "Removing existing gateway VM..."
     sudo virsh destroy gateway 2>/dev/null
