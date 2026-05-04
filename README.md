@@ -26,10 +26,10 @@ The master script automatically detects your Linux family (via `ID_LIKE`) and in
 
 # Clone the repository
 git clone https://github.com/ManosTher/lab-gateway.git
-cd lab-gateway
+cd lab-gateway/scripts
 
 # Make scripts executable
-chmod +x scripts/*.sh
+chmod +x /*.sh
 
 # Start the deployment
-sudo ./scripts/Initialize(One\ Touch).sh
+sudo ./Initialize_One_Touch.sh
