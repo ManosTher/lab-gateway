@@ -1,7 +1,6 @@
 #!/bin/bash
 # =====================================================
-# Script: 03-create-fedora-clients.sh
-# Purpose: Create 2 Fedora client VMs (internal network)
+# Script: 04-create-fedora-clients(ping_to_03).sh
 # =====================================================
 
 echo "=== CREATING 2 FEDORA CLIENT VMS ==="
@@ -23,37 +22,24 @@ else
 fi
 
 # ========== KICKSTART FOR CLIENT ==========
-cat > /tmp/client-ks.cfg << 'KS'
-# Fedora 42 Client - FULLY AUTOMATIC INSTALLATION
+cat > /tmp/client2-ks.cfg << 'KS'
 text
 reboot
 lang en_US.UTF-8
 keyboard us
 timezone Europe/Athens --utc
 
-# Network (DHCP from gateway)
 network --bootproto=dhcp --device=enp1s0 --activate
-
-# Root password
 rootpw --plaintext ubu123
-
-# User
 user --name=admin --password=ubu123 --groups=wheel
 
-# Disk
 zerombr
 clearpart --all --initlabel
 autopart --type=plain
-
-# Installation source
 cdrom
-
-# No GUI
 skipx
 firstboot --disable
 
-
-# Basic packages
 %packages
 @^server-product-environment
 vim
@@ -61,13 +47,11 @@ curl
 wget
 %end
 
-# Post-install (test script)
-# Post-install (test script)
 %post
 echo "Client installed successfully" > /root/status.txt
 hostnamectl set-hostname client.lab.local
 
-# Auto-login
+# Auto-login setup
 mkdir -p /etc/systemd/system/serial-getty@ttyS0.service.d/
 cat << 'EOF' > /etc/systemd/system/serial-getty@ttyS0.service.d/autologin.conf
 [Service]
@@ -75,53 +59,35 @@ ExecStart=
 ExecStart=-/sbin/agetty --autologin admin --keep-baud 115200,57600,38400,9600 %I $TERM
 EOF
 
-# Dynamic ping using nmap
+# Ultra Fast Lab Discovery Script
 cat << 'AUTOPING' > /usr/local/bin/auto-ping.sh
 #!/bin/bash
-
 INTERFACE="enp1s0"
 sleep 5
 MY_IP=$(ip -4 addr show $INTERFACE | grep -oP '(?<=inet\s)\d+(\.\d+){3}')
-GATEWAY="10.10.10.2"
 SUBNET_PREFIX="10.10.10"
 
 echo "=== Ultra Fast Lab Discovery Started ==="
-
 while true; do
-    echo "Scanning full subnet range .3 to .254 in parallel..."
-    
-    # Clean found
     rm -f /tmp/found_ip
-    
-    # Scan all range
     for i in {3..254}; do
         TEST_IP="${SUBNET_PREFIX}.$i"
-        if [ "$TEST_IP" == "$MY_IP" ]; then continue; fi
-        
-        # IP writen in file
+        [ "$TEST_IP" == "$MY_IP" ] && continue
         (ping -c 1 -W 1 "$TEST_IP" > /dev/null 2>&1 && echo "$TEST_IP" > /tmp/found_ip) &
     done
-
-    # Waiting everybody answer
-    sleep 1.5
-    
+    sleep 2
     if [ -f /tmp/found_ip ]; then
         TARGET_IP=$(head -n 1 /tmp/found_ip)
         echo ">>> SUCCESS! Found neighbor at: $TARGET_IP"
-        # Ξεκινάμε το ατελείωτο ping
         ping "$TARGET_IP"
-    else
-        echo "No neighbors found in range .3-.254. Retrying..."
     fi
     sleep 2
 done
 AUTOPING
-chmod 755 /usr/local/bin/auto-ping.sh
 
-# Add to bashrc
+chmod 755 /usr/local/bin/auto-ping.sh
 echo "/usr/local/bin/auto-ping.sh" >> /home/admin/.bashrc
 chown admin:admin /home/admin/.bashrc
-
 %end
 KS
 
@@ -137,7 +103,7 @@ if sudo virsh list --all | grep -q "$VM_NAME"; then
     echo "✅ $VM_NAME removed"
 fi
 
-cp /tmp/client-ks.cfg /tmp/ks-$VM_NAME.cfg
+cp /tmp/client2-ks.cfg /tmp/ks-$VM_NAME.cfg
 sed -i "s/client.lab.local/client2.lab.local/g" /tmp/ks-$VM_NAME.cfg
 
 echo "Creating $VM_NAME..."

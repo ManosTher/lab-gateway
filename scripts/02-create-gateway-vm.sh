@@ -249,6 +249,14 @@ fi
 
 #==========================================================
 
+konsole --title "LAB CONSOLE: GATEWAY" -e bash -c "
+    echo '--- Console Monitor for GATEWAY Starting ---';
+    while true; do
+        sudo virsh console gateway
+        echo '--- VM Rebooting or Disconnected. Retrying in 2 seconds... ---'
+        sleep 2
+    done" &
+
 echo -e "\n=== 4/6: Creating Gateway VM with 2 NICs ==="
 sudo virt-install \
 	--name gateway \
@@ -263,6 +271,8 @@ sudo virt-install \
 	--location "$ISO_PATH" \
 	--initrd-inject /tmp/ks.cfg \
 	--extra-args "inst.ks=file:/ks.cfg console=ttyS0 inst.reboot" \
+    --autoconsole none \
+    --wait -1 \
 	--check all=off
 
 if [ $? -eq 0 ]; then

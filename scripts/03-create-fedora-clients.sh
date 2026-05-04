@@ -1,7 +1,7 @@
 #!/bin/bash
 # =====================================================
 # Script: 03-create-fedora-clients.sh
-# Purpose: Create 2 Fedora client VMs (internal network)
+
 # =====================================================
 
 echo "=== CREATING 2 FEDORA CLIENT VMS ==="
@@ -23,7 +23,7 @@ else
 fi
 
 # ========== KICKSTART FOR CLIENT ==========
-cat > /tmp/client-ks.cfg << 'KS'
+cat > /tmp/client1-ks.cfg << 'KS'
 # Fedora 42 Client - FULLY AUTOMATIC INSTALLATION
 text
 reboot
@@ -79,7 +79,7 @@ EOF
 cat << 'EOF' > /usr/local/bin/auto-ping.sh
 #!/bin/bash
 echo "=== Starting Automated Lab Connectivity Test ==="
-ping 8.8.8.8
+ping google.com
 EOF
 chmod 755 /usr/local/bin/auto-ping.sh
 
@@ -102,7 +102,7 @@ if sudo virsh list --all | grep -q "$VM_NAME"; then
     echo "✅ $VM_NAME removed"
 fi
 
-cp /tmp/client-ks.cfg /tmp/ks-$VM_NAME.cfg
+cp /tmp/client1-ks.cfg /tmp/ks-$VM_NAME.cfg
 sed -i "s/client.lab.local/client1.lab.local/g" /tmp/ks-$VM_NAME.cfg
 
 echo "Creating $VM_NAME..."

@@ -1,5 +1,7 @@
 #!/bin/bash
-#
+#================================
+# Script: 01-create-networks.sh
+# ================================
 #Creates 2 virtual networks on VMM/libvirt
 # - external: NAT mode (Internet Access)
 # - internal: Isolated mode (Internal VMs)
