@@ -25,11 +25,11 @@ A fully automated Virtual Lab environment that deploys a **Fedora 42 Gateway/Rou
 The master script automatically detects your Linux family (via `ID_LIKE`) and installs all necessary dependencies (`virt-install`, `libvirt`, `wget`, `konsole`) using the appropriate package manager (`dnf` or `apt`).
 
 # Clone the repository
-git clone https://github.com/ManosTher/lab-gateway.git
+git clone https://github.com/ManosTher/lab-gateway.git  
 cd lab-gateway/scripts
 
 # Make scripts executable
-chmod +x /*.sh
+chmod +x *.sh
 
 # Start the deployment
 sudo ./Initialize_One_Touch.sh
