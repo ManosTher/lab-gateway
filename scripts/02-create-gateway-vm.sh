@@ -4,54 +4,6 @@
 # ================================
 
 # ================================
-echo " !!!!! DEPENDANCIES CHECK !!!!! "
-
-DEPENDENCIES=("virt-install" "virsh" "wget" "dl-fedora")
-
-check_and_install() {
-    local cmd=$1
-    if ! command -v "$cmd" &> /dev/null; then
-        echo "⚠️  $cmd not found. Installing..."
-
-        (Fedora/RHEL)
-        if command -v dnf &> /dev/null; then
-            case $cmd in
-                virt-install)
-                    sudo dnf install -y virt-install
-                    ;;
-                virsh)
-                    sudo dnf install -y libvirt-client
-                    ;;
-                wget)
-                    sudo dnf install -y wget
-                    ;;
-                dl-fedora)
-                    sudo dnf install -y dl-fedora
-                    ;;
-                *)
-                    echo "Unknown dependency: $cmd"
-                    return 1
-                    ;;
-            esac
-        else
-            echo "Cannot install $cmd - no package manager found"
-            return 1
-        fi
-    fi
-    return 0
-}
-
-# Έλεγχος κάθε dependency
-for dep in "${DEPENDENCIES[@]}"; do
-    if check_and_install "$dep"; then
-        echo "$dep is available"
-    else
-        echo "Failed to install $dep"
-        exit 1
-    fi
-done
-
-# ================================
 # === 1/6 Checking prerequisites ===
 
 # Checking for Networks
