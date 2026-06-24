@@ -1,25 +1,29 @@
 #!/bin/bash
 # =====================================================
 # Script: 03-create-fedora-clients.sh
-
 # =====================================================
 
 echo "=== CREATING 2 FEDORA CLIENT VMS ==="
 
 ISO_PATH="/var/lib/libvirt/images/Fedora-Server-dvd-x86_64-42-1.1.iso"
 
+if [ ! -d "/var/lib/libvirt/images" ]; then
+    sudo mkdir -p /var/lib/libvirt/images
+fi
+
 if [ ! -f "$ISO_PATH" ]; then
-    echo "Downloading Fedora 42 Server ISO..."
-   sudo wget -O "$ISO_PATH" https://ftp.cc.uoc.gr/mirrors/linux/fedora/linux/releases/42/Server/x86_64/iso/Fedora-Server-dvd-x86_64-42-1.1.iso
+    echo "🌐 Downloading Fedora 42 Server ISO from UOC Mirror..."
+    sudo wget -O "$ISO_PATH" https://ftp.cc.uoc.gr/mirrors/linux/fedora/linux/releases/42/Server/x86_64/iso/Fedora-Server-dvd-x86_64-42-1.1.iso
 
     if [ $? -eq 0 ]; then
-        echo "ISO downloaded successfully"
+        echo "✅ ISO downloaded successfully"
+    command -v restorecon &>/dev/null && sudo restorecon -v "$ISO_PATH"
     else
-        echo "Failed to download ISO"
+        echo "❌ Failed to download ISO"
         exit 1
     fi
 else
-    echo "ISO already exists: $ISO_PATH"
+    echo "✅ ISO already exists: $ISO_PATH"
 fi
 
 # ========== KICKSTART FOR CLIENT ==========
@@ -107,14 +111,18 @@ sed -i "s/client.lab.local/client1.lab.local/g" /tmp/ks-$VM_NAME.cfg
 
 echo "Creating $VM_NAME..."
 
-konsole --title "LAB CONSOLE: $VM_NAME" -e bash -c "
+xterm -T "LAB CONSOLE: $VM_NAME" -e bash -c "
     echo '--- Console Monitor for $VM_NAME Starting ---';
     while true; do
         sudo virsh console $VM_NAME
         echo '--- VM Rebooting or Disconnected. Retrying in 2 seconds... ---'
         sleep 2
     done" &
-
+    
+sudo mkdir -p /var/lib/libvirt/boot
+sudo chown root:root /var/lib/libvirt/boot
+sudo chmod 711 /var/lib/libvirt/boot
+command -v restorecon &>/dev/null && sudo restorecon -v /var/lib/libvirt/boot
 
 sudo virt-install \
     --name $VM_NAME \

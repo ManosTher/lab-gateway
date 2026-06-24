@@ -16,24 +16,43 @@ fi
 
 install_deps() {
     if [[ "$OS_FAMILY" =~ "fedora" || "$OS_FAMILY" =~ "rhel" || "$OS_FAMILY" =~ "centos" ]]; then
-        echo "Detected RedHat-based system ($ID). Using dnf..."
-        sudo dnf install -y virt-install libvirt-client wget konsole
+        echo "📦 Detected RedHat-based system ($ID). Using dnf..."
+        
+        sudo dnf install -y virt-install libvirt-client wget xterm \
+        libvirt-daemon-config-network libvirt-daemon-kvm
+
+        # Fix SELinux 
+        if [ "$(getenforce)" = "Enforcing" ]; then
+            echo "Setting SELinux to Permissive to allow modular network daemons..."
+            sudo setenforce 0
+            sudo sed -i 's/^SELINUX=enforcing/SELINUX=permissive/' /etc/selinux/config
+        fi
+
+        # Modular Sockets
+        echo "Enabling Virtualization Sockets..."
+        for unit in qemu network storage nodedev; do
+            sudo systemctl enable --now virt${unit}d.socket 2>/dev/null
+        done
+
     elif [[ "$OS_FAMILY" =~ "debian" || "$OS_FAMILY" =~ "ubuntu" ]]; then
-        echo "Detected Debian-based system ($ID). Using apt..."
-        sudo apt update && sudo apt install -y virt-install libvirt-clients wget konsole
+        echo "📦 Detected Debian-based system ($ID). Using apt..."
+        sudo apt update && sudo apt install -y virt-install libvirt-clients libvirt-daemon-system wget xterm
+        sudo systemctl enable --now libvirtd
     else
-        echo "Unknown OS: $ID. Trying dnf as a fallback..."
-        sudo dnf install -y virt-install libvirt-client wget konsole || echo "Please install dependencies manually."
+        echo "⚠️ Unknown OS: $ID. Trying dnf fallback..."
+        sudo dnf install -y virt-install libvirt-client wget xterm || echo "Please install dependencies manually."
     fi
 }
 
-for cmd in virt-install virsh wget konsole; do
+for cmd in virt-install virsh wget xterm; do
     if ! command -v "$cmd" &> /dev/null; then
-        echo "⚠️  $cmd is missing."
+        echo "⚠️  $cmd is missing. Running installer..."
         install_deps
         break
     fi
 done
+
+sleep 2
 
 # ==========================================================
 

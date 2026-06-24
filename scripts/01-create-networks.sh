@@ -13,6 +13,8 @@ if ! systemctl is-active --quiet libvirtd; then
         sudo systemctl enable libvirtd
 else
         echo "** libvirtd is Active"
+		sudo virsh net-destroy default 2>/dev/null
+		sudo virsh net-undefine default 2>/dev/null
 fi
 
 echo -e "\n=== 2/6: Check if networks already exist ==="
